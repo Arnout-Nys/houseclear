@@ -1,0 +1,4 @@
+"use client";
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+export default function Login(){const [pin,setPin]=useState("");const [err,setErr]=useState("");const r=useRouter();async function go(e:FormEvent){e.preventDefault();setErr("");const res=await fetch("/api/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({pin})});if(res.ok)r.push("/");else setErr("That PIN is not correct.")};return <main className="shell login"><form className="card stack" onSubmit={go}><div><div className="brand">HouseClear</div><p className="subtle">Private family inventory</p></div><label className="field">Family PIN<input value={pin} onChange={e=>setPin(e.target.value)} inputMode="numeric" autoFocus /></label>{err&&<div style={{color:"var(--danger)"}}>{err}</div>}<button className="btn primary">Open house</button></form></main>}
