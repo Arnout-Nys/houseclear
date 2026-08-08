@@ -11,27 +11,22 @@ import {
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Nav } from "@/components/Nav";
+import { ItemCard } from "@/components/ItemCard";
+import { useMember } from "@/components/MemberPicker";
+
+import type { Item } from "@/lib/types";
 
 const labels: Record<string, string> = {
+  needs_review: "Needs review",
+  ready: "Ready to decide",
   conflicts: "Conflicts",
-  undecided: "Undecided",
-  sell: "To sell",
-  clearance: "Clearance",
-  donate: "Donate",
   unclaimed: "Unclaimed",
   family: "Family",
+  sell: "To sell",
+  clearance: "Clearance",
   removed: "Removed",
+  my_work: "My work",
   all: "All items"
-};
-
-const destinationLabel:
-Record<string, string> = {
-  family: "👪 Family",
-  sell: "💰 Sell",
-  donate: "🎁 Donate",
-  clearance: "🚚 Clearance",
-  recycle: "♻️ Recycle",
-  trash: "🗑️ Trash"
 };
 
 function ItemsContent() {
@@ -41,53 +36,117 @@ function ItemsContent() {
     sp.get("filter") || "all";
 
   const [items, setItems] =
-    useState<any[]>([]);
+    useState<Item[]>([]);
 
   const [loading, setLoading] =
     useState(true);
 
-  useEffect(() => {
+  const {
+    members,
+    selected
+  } = useMember();
+
+  async function load() {
     setLoading(true);
 
-    api<any[]>("/api/items")
-      .then(setItems)
-      .finally(() =>
-        setLoading(false)
+    try {
+      setItems(
+        await api<Item[]>(
+          "/api/items"
+        )
       );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load().catch(() => {});
   }, []);
 
   const filtered = useMemo(() => {
+    const decisionMakers =
+      members.filter(
+        (member) =>
+          member.is_decision_maker
+      );
+
+    const decisionIds =
+      new Set(
+        decisionMakers.map(
+          (member) => member.id
+        )
+      );
+
+    const selectedMember =
+      members.find(
+        (member) =>
+          member.id === selected
+      );
+
     return items.filter((item) => {
+      const votes =
+        item.votes || [];
 
       const wants =
-        (item.votes || [])
-          .filter(
-            (v: any) =>
-              v.level === "want"
-          )
-          .length;
+        votes.filter(
+          (vote) =>
+            vote.level === "want"
+        );
+
+      const decisionVoted =
+        new Set(
+          votes
+            .filter(
+              (vote) =>
+                decisionIds.has(
+                  vote.member_id
+                )
+            )
+            .map(
+              (vote) =>
+                vote.member_id
+            )
+        ).size;
+
+      const unresolved =
+        !item.destination ||
+        item.destination ===
+          "undecided";
+
+      const myVote =
+        votes.find(
+          (vote) =>
+            vote.member_id ===
+            selected
+        )?.level;
+
+      const assignedToMe =
+        item.assigned_member_id ===
+        selected;
 
       switch (filter) {
 
+        case "needs_review":
+          return (
+            unresolved &&
+            decisionVoted <
+              decisionMakers.length
+          );
+
+        case "ready":
+          return (
+            unresolved &&
+            decisionMakers.length > 0 &&
+            decisionVoted ===
+              decisionMakers.length
+          );
+
         case "conflicts":
-          return wants > 1;
-
-        case "undecided":
-          return (
-            !item.destination ||
-            item.destination ===
-              "undecided"
-          );
-
-        case "sell":
-        case "clearance":
-        case "donate":
-          return (
-            item.destination === filter
-          );
+          return wants.length > 1;
 
         case "unclaimed":
-          return wants === 0;
+          return wants.length === 0;
 
         case "family":
           return (
@@ -95,9 +154,56 @@ function ItemsContent() {
             "family"
           );
 
+        case "sell":
+          return (
+            item.destination ===
+            "sell"
+          );
+
+        case "clearance":
+          return (
+            item.destination ===
+            "clearance"
+          );
+
         case "removed":
           return (
-            item.status === "removed"
+            item.status ===
+            "removed"
+          );
+
+        case "my_work":
+
+          if (!selected) {
+            return false;
+          }
+
+          if (
+            selectedMember
+              ?.is_decision_maker
+          ) {
+            return (
+              !myVote ||
+              (
+                myVote === "want" &&
+                wants.length > 1
+              ) ||
+              (
+                assignedToMe &&
+                item.status !==
+                  "removed"
+              )
+            );
+          }
+
+          return (
+            myVote === "want" ||
+            myVote === "maybe" ||
+            (
+              assignedToMe &&
+              item.status !==
+                "removed"
+            )
           );
 
         default:
@@ -105,7 +211,12 @@ function ItemsContent() {
       }
     });
 
-  }, [items, filter]);
+  }, [
+    items,
+    filter,
+    members,
+    selected
+  ]);
 
   if (loading) {
     return (
@@ -119,6 +230,7 @@ function ItemsContent() {
     <main className="shell stack">
 
       <div className="topbar">
+
         <div>
 
           <Link
@@ -138,6 +250,7 @@ function ItemsContent() {
           </div>
 
         </div>
+
       </div>
 
       {filtered.length === 0 ? (
@@ -150,117 +263,20 @@ function ItemsContent() {
 
         <section className="stack">
 
-          {filtered.map((item) => {
+          {filtered.map((item) => (
 
-            const wanters =
-              (item.votes || [])
-                .filter(
-                  (v: any) =>
-                    v.level === "want"
-                )
-                .map(
-                  (v: any) =>
-                    v.members?.name
-                )
-                .filter(Boolean);
+            <ItemCard
+              key={item.id}
+              item={item}
+              members={members}
+              selected={selected}
+              onChanged={load}
+            />
 
-            const photo =
-              item.item_photos?.[0]
-                ?.url ||
-              item.photo_url;
-
-            return (
-
-              <Link
-                className="card item-row"
-                href={`/item/${item.id}`}
-                key={item.id}
-              >
-
-                {photo ? (
-                  <img
-                    className="thumb"
-                    src={photo}
-                    alt=""
-                  />
-                ) : (
-                  <div className="thumb" />
-                )}
-
-                <div
-                  style={{
-                    minWidth: 0
-                  }}
-                >
-
-                  <strong>
-                    {item.title}
-                  </strong>
-
-                  <div
-                    className="subtle"
-                    style={{
-                      marginTop: 4
-                    }}
-                  >
-                    {item.rooms?.floor
-                      ? `${item.rooms.floor} — `
-                      : ""}
-
-                    {item.rooms?.name ||
-                      "Unknown room"}
-                  </div>
-
-                  <div
-                    className="badges"
-                    style={{
-                      marginTop: 8
-                    }}
-                  >
-
-                    {item.status ===
-                      "removed" && (
-                      <span className="badge">
-                        ✅ Removed
-                      </span>
-                    )}
-
-                    {item.destination && (
-                      <span className="badge">
-                        {
-                          destinationLabel[
-                            item.destination
-                          ] ||
-                          item.destination
-                        }
-                      </span>
-                    )}
-
-                    {wanters.length > 0 && (
-                      <span
-                        className={
-                          wanters.length > 1
-                            ? "badge conflict"
-                            : "badge"
-                        }
-                      >
-                        {wanters.length > 1
-                          ? "⚠️ "
-                          : "❤️ "}
-
-                        {wanters.join(", ")}
-                      </span>
-                    )}
-
-                  </div>
-
-                </div>
-
-              </Link>
-            );
-          })}
+          ))}
 
         </section>
+
       )}
 
       <Nav />
