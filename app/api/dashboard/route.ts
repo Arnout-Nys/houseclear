@@ -12,68 +12,121 @@ export async function GET() {
 
   const db = getSupabaseAdmin();
 
-  const { data: items, error } = await db
-    .from("items")
-    .select(
-      "id,destination,status,votes(level)"
-    );
+  const [
+    { data: items, error },
+    {
+      data: decisionMakers,
+      error: memberError
+    }
+  ] = await Promise.all([
+    db
+      .from("items")
+      .select(
+        "id,destination,status,votes(member_id,level)"
+      ),
 
-  if (error) {
+    db
+      .from("members")
+      .select("id")
+      .eq("is_decision_maker", true)
+  ]);
+
+  if (error || memberError) {
     return NextResponse.json(
-      { error: error.message },
+      {
+        error:
+          error?.message ||
+          memberError?.message
+      },
       { status: 500 }
     );
   }
 
   const all = items || [];
 
+  const decisionIds = new Set(
+    (decisionMakers || []).map(
+      (member: any) => member.id
+    )
+  );
+
+  const decisionTotal =
+    decisionIds.size;
+
   const wantCount = (item: any) =>
     (item.votes || []).filter(
-      (v: any) => v.level === "want"
+      (vote: any) =>
+        vote.level === "want"
     ).length;
+
+  const decisionVoteCount = (
+    item: any
+  ) =>
+    new Set(
+      (item.votes || [])
+        .filter(
+          (vote: any) =>
+            decisionIds.has(
+              vote.member_id
+            )
+        )
+        .map(
+          (vote: any) =>
+            vote.member_id
+        )
+    ).size;
+
+  const unresolved = (item: any) =>
+    !item.destination ||
+    item.destination === "undecided";
 
   const stats = {
     total: all.length,
 
-    undecided: all.filter(
-      (x: any) =>
-        !x.destination ||
-        x.destination === "undecided"
+    needs_review: all.filter(
+      (item: any) =>
+        unresolved(item) &&
+        decisionVoteCount(item) <
+          decisionTotal
+    ).length,
+
+    ready: all.filter(
+      (item: any) =>
+        unresolved(item) &&
+        decisionTotal > 0 &&
+        decisionVoteCount(item) ===
+          decisionTotal
     ).length,
 
     conflicts: all.filter(
-      (x: any) =>
-        wantCount(x) > 1
+      (item: any) =>
+        wantCount(item) > 1
     ).length,
 
     unclaimed: all.filter(
-      (x: any) =>
-        wantCount(x) === 0
+      (item: any) =>
+        wantCount(item) === 0
     ).length,
 
     allocated: all.filter(
-      (x: any) =>
-        x.destination === "family"
+      (item: any) =>
+        item.destination === "family"
     ).length,
 
     sell: all.filter(
-      (x: any) =>
-        x.destination === "sell"
-    ).length,
-
-    donate: all.filter(
-      (x: any) =>
-        x.destination === "donate"
+      (item: any) =>
+        item.destination === "sell"
     ).length,
 
     clearance: all.filter(
-      (x: any) =>
-        x.destination === "clearance"
+      (item: any) =>
+        item.destination ===
+          "clearance"
     ).length,
 
     removed: all.filter(
-      (x: any) =>
-        x.status === "removed"
+      (item: any) =>
+        item.status === "removed"
     ).length
   };
 
