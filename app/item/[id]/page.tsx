@@ -1,4 +1,498 @@
 "use client";
-import Link from "next/link";import {use,useEffect,useState} from "react";import {api} from "@/lib/api";import {MemberPicker,useMember} from "@/components/MemberPicker";import {Nav} from "@/components/Nav";import type {Destination,VoteLevel} from "@/lib/types";
-const destinations:Destination[]=["undecided","family","sell","donate","clearance","recycle","trash"];
-export default function ItemPage({params}:{params:Promise<{id:string}>}){const {id}=use(params);const [item,setItem]=useState<any>(null);const [busy,setBusy]=useState(false);const {members,selected,setSelected}=useMember();async function load(){setItem(await api(`/api/items/${id}`))}useEffect(()=>{load().catch(()=>{})},[id]);async function vote(level:VoteLevel){if(!selected)return;setBusy(true);await api("/api/votes",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({item_id:id,member_id:selected,level})});await load();setBusy(false)}async function patch(body:any){setBusy(true);await api(`/api/items/${id}`,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify(body)});await load();setBusy(false)}if(!item)return <main className="shell">Loading…</main>;const myVote=(item.votes||[]).find((v:any)=>v.member_id===selected)?.level;const wants=(item.votes||[]).filter((v:any)=>v.level==='want');return <main className="shell stack"><div className="topbar"><div><Link className="subtle" href={`/room/${item.room_id}`}>← {item.rooms?.name||"Room"}</Link><h1 className="title">{item.title}</h1></div></div>{item.photo_url&&<img className="photo" src={item.photo_url} alt={item.title}/>} {item.description&&<div className="card">{item.description}</div>}<MemberPicker members={members} selected={selected} setSelected={setSelected}/><section className="card stack"><strong>Do you want this?</strong><div className="grid2"><button disabled={busy} className={`btn ${myVote==='want'?'active':''}`} onClick={()=>vote('want')}>❤️ Want</button><button disabled={busy} className={`btn ${myVote==='maybe'?'active':''}`} onClick={()=>vote('maybe')}>🙂 Maybe</button></div><button disabled={busy} className={`btn ${myVote==='no'?'active':''}`} onClick={()=>vote('no')}>— No interest</button>{wants.length>0&&<div className="subtle">Want: {wants.map((v:any)=>v.members?.name).filter(Boolean).join(", ")}</div>}{wants.length>1&&<div className="badge conflict">⚠️ Multiple people want this</div>}</section><section className="card stack"><strong>Final destination</strong><select value={item.destination} onChange={e=>patch({destination:e.target.value,status:e.target.value==='undecided'?'open':'decided'})}>{destinations.map(d=><option key={d} value={d}>{d}</option>)}</select>{item.destination==='family'&&<select value={item.assigned_member_id||""} onChange={e=>patch({assigned_member_id:e.target.value||null})}><option value="">Choose family member…</option>{members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>}<button className={`btn ${item.status==='removed'?'active':''}`} onClick={()=>patch({status:item.status==='removed'?'decided':'removed'})}>{item.status==='removed'?'✅ Physically removed':'📦 Mark as physically removed'}</button></section><Nav/></main>}
+import Link from "next/link";
+import {use,useEffect,useState} from "react";
+import {useRouter} from "next/navigation";
+import {api} from "@/lib/api";
+import {MemberPicker,useMember} from "@/components/MemberPicker";
+import {Nav} from "@/components/Nav";
+import type {Destination,VoteLevel} from "@/lib/types";
+
+const destinations:Destination[]=[
+  "undecided",
+  "family",
+  "sell",
+  "donate",
+  "clearance",
+  "recycle",
+  "trash"
+];
+
+const labels:Record<string,string>={
+  undecided:"❓ Undecided",
+  family:"👪 Family",
+  sell:"💰 Sell",
+  donate:"🎁 Donate",
+  clearance:"🚚 Clearance",
+  recycle:"♻️ Recycle",
+  trash:"🗑️ Trash"
+};
+
+export default function ItemPage({
+  params
+}:{
+  params:Promise<{id:string}>
+}){
+  const {id}=use(params);
+  const router=useRouter();
+
+  const [item,setItem]=useState<any>(null);
+  const [busy,setBusy]=useState(false);
+  const [editing,setEditing]=useState(false);
+  const [title,setTitle]=useState("");
+  const [description,setDescription]=useState("");
+
+  const {members,selected,setSelected}=useMember();
+
+  async function load(){
+    const x:any=await api(`/api/items/${id}`);
+    setItem(x);
+    setTitle(x.title||"");
+    setDescription(x.description||"");
+  }
+
+  useEffect(()=>{
+    load().catch(()=>{});
+  },[id]);
+
+  async function vote(level:VoteLevel){
+    if(!selected)return;
+
+    setBusy(true);
+
+    await api("/api/votes",{
+      method:"POST",
+      headers:{
+        "content-type":"application/json"
+      },
+      body:JSON.stringify({
+        item_id:id,
+        member_id:selected,
+        level
+      })
+    });
+
+    await load();
+    setBusy(false);
+  }
+
+  async function patch(body:any){
+    setBusy(true);
+
+    await api(`/api/items/${id}`,{
+      method:"PATCH",
+      headers:{
+        "content-type":"application/json"
+      },
+      body:JSON.stringify(body)
+    });
+
+    await load();
+    setBusy(false);
+  }
+
+  async function saveText(){
+    await patch({
+      title:title.trim()||"Untitled item",
+      description:description.trim()||null
+    });
+
+    setEditing(false);
+  }
+
+  async function addPhoto(file:File|null){
+    if(!file)return;
+
+    setBusy(true);
+
+    try{
+      const fd=new FormData();
+      fd.set("file",file);
+
+      const up=await api<{url:string}>(
+        "/api/upload",
+        {
+          method:"POST",
+          body:fd
+        }
+      );
+
+      await api(`/api/items/${id}/photos`,{
+        method:"POST",
+        headers:{
+          "content-type":"application/json"
+        },
+        body:JSON.stringify({
+          url:up.url
+        })
+      });
+
+      await load();
+    }finally{
+      setBusy(false);
+    }
+  }
+
+  async function remove(){
+    if(
+      !confirm(
+        `Delete “${item.title}”? This cannot be undone.`
+      )
+    )return;
+
+    setBusy(true);
+
+    const result:any=await api(
+      `/api/items/${id}`,
+      {
+        method:"DELETE"
+      }
+    );
+
+    router.push(
+      `/room/${result.room_id||item.room_id}`
+    );
+
+    router.refresh();
+  }
+
+  if(!item){
+    return <main className="shell">Loading…</main>;
+  }
+
+  const myVote=(item.votes||[])
+    .find((v:any)=>v.member_id===selected)
+    ?.level;
+
+  const wants=(item.votes||[])
+    .filter((v:any)=>v.level==="want");
+
+  const photos=(item.item_photos||[])
+    .slice()
+    .sort(
+      (a:any,b:any)=>
+        a.sort_order-b.sort_order
+    );
+
+  if(!photos.length&&item.photo_url){
+    photos.push({
+      id:"legacy",
+      url:item.photo_url
+    });
+  }
+
+  return (
+    <main className="shell stack">
+
+      <div className="topbar">
+
+        <div style={{flex:1}}>
+
+          <Link
+            className="subtle"
+            href={`/room/${item.room_id}`}
+          >
+            ← {item.rooms?.name||"Room"}
+          </Link>
+
+          {editing ? (
+            <input
+              value={title}
+              onChange={(e)=>
+                setTitle(e.target.value)
+              }
+              style={{
+                fontSize:"1.5rem",
+                fontWeight:700,
+                width:"100%",
+                marginTop:8
+              }}
+            />
+          ) : (
+            <h1 className="title">
+              {item.title}
+            </h1>
+          )}
+
+        </div>
+
+        <button
+          className="btn"
+          onClick={()=>
+            setEditing(!editing)
+          }
+        >
+          {editing
+            ?"Cancel"
+            :"✏️ Edit"}
+        </button>
+
+      </div>
+
+      {photos.length>0 && (
+        <div
+          style={{
+            display:"grid",
+            gridTemplateColumns:
+              photos.length>1
+                ?"repeat(2,1fr)"
+                :"1fr",
+            gap:8
+          }}
+        >
+          {photos.map((p:any)=>(
+            <img
+              key={p.id}
+              className="photo"
+              src={p.url}
+              alt={item.title}
+            />
+          ))}
+        </div>
+      )}
+
+      <label
+        className="btn"
+        style={{textAlign:"center"}}
+      >
+        📷 Add another photo
+
+        <input
+          hidden
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={(e)=>
+            addPhoto(
+              e.target.files?.[0]||null
+            )
+          }
+        />
+
+      </label>
+
+      {editing ? (
+
+        <section className="card stack">
+
+          <label className="field">
+            Notes
+
+            <textarea
+              rows={4}
+              value={description}
+              onChange={(e)=>
+                setDescription(
+                  e.target.value
+                )
+              }
+            />
+
+          </label>
+
+          <button
+            className="btn primary"
+            disabled={busy}
+            onClick={saveText}
+          >
+            Save changes
+          </button>
+
+        </section>
+
+      ) : item.description ? (
+
+        <div className="card">
+          {item.description}
+        </div>
+
+      ) : null}
+
+      <MemberPicker
+        members={members}
+        selected={selected}
+        setSelected={setSelected}
+      />
+
+      <section className="card stack">
+
+        <strong>
+          Do you want this?
+        </strong>
+
+        <div className="grid2">
+
+          <button
+            disabled={busy}
+            className={`btn ${
+              myVote==="want"
+                ?"active"
+                :""
+            }`}
+            onClick={()=>
+              vote("want")
+            }
+          >
+            ❤️ Want
+          </button>
+
+          <button
+            disabled={busy}
+            className={`btn ${
+              myVote==="maybe"
+                ?"active"
+                :""
+            }`}
+            onClick={()=>
+              vote("maybe")
+            }
+          >
+            🙂 Maybe
+          </button>
+
+        </div>
+
+        <button
+          disabled={busy}
+          className={`btn ${
+            myVote==="no"
+              ?"active"
+              :""
+          }`}
+          onClick={()=>
+            vote("no")
+          }
+        >
+          — No interest
+        </button>
+
+        {wants.length>0 && (
+          <div>
+            <strong>
+              Wanted by:
+            </strong>{" "}
+            {wants
+              .map(
+                (v:any)=>
+                  v.members?.name
+              )
+              .filter(Boolean)
+              .join(", ")}
+          </div>
+        )}
+
+        {wants.length>1 && (
+          <div className="badge conflict">
+            ⚠️ Decision needed
+          </div>
+        )}
+
+      </section>
+
+      <section className="card stack">
+
+        <strong>
+          Final destination
+        </strong>
+
+        <select
+          value={
+            item.destination||
+            "undecided"
+          }
+          onChange={(e)=>
+            patch({
+              destination:
+                e.target.value===
+                "undecided"
+                  ?null
+                  :e.target.value,
+
+              status:
+                e.target.value===
+                "undecided"
+                  ?"undecided"
+                  :"decided"
+            })
+          }
+        >
+          {destinations.map((d)=>(
+            <option
+              key={d}
+              value={d}
+            >
+              {labels[d]||d}
+            </option>
+          ))}
+        </select>
+
+        {item.destination==="family" && (
+
+          <select
+            value={
+              item.assigned_member_id||
+              ""
+            }
+            onChange={(e)=>
+              patch({
+                assigned_member_id:
+                  e.target.value||null
+              })
+            }
+          >
+
+            <option value="">
+              Choose family member…
+            </option>
+
+            {members.map((m)=>(
+              <option
+                key={m.id}
+                value={m.id}
+              >
+                {m.name}
+              </option>
+            ))}
+
+          </select>
+
+        )}
+
+        <button
+          className={`btn ${
+            item.status==="removed"
+              ?"active"
+              :""
+          }`}
+          onClick={()=>
+            patch({
+              status:
+                item.status===
+                "removed"
+                  ?"decided"
+                  :"removed"
+            })
+          }
+        >
+          {item.status==="removed"
+            ?"✅ Physically removed"
+            :"📦 Mark as physically removed"}
+        </button>
+
+      </section>
+
+      <section className="card">
+        <button
+          className="btn"
+          disabled={busy}
+          onClick={remove}
+          style={{width:"100%"}}
+        >
+          🗑️ Delete item
+        </button>
+      </section>
+
+      <Nav/>
+
+    </main>
+  );
+}
