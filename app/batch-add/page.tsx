@@ -24,6 +24,13 @@ type BatchPhoto = {
   error?: string;
 };
 
+type AiDescription = {
+  title: string;
+  description: string | null;
+  category?: string;
+  condition?: string;
+};
+
 async function compressImage(
   file: File,
   maxDimension = 1800,
@@ -292,11 +299,22 @@ function BatchAddContent() {
     );
 
     try {
+      /*
+       * STEP 1
+       * Compress the photograph
+       * in the browser.
+       */
       const compressed =
         await compressImage(
           photo.file
         );
 
+      /*
+       * STEP 2
+       * Upload compressed image
+       * to Supabase Storage
+       * through our existing API.
+       */
       const form =
         new FormData();
 
@@ -316,6 +334,76 @@ function BatchAddContent() {
           }
         );
 
+      /*
+       * STEP 3
+       * Ask OpenAI to analyse
+       * the uploaded photograph.
+       *
+       * AI is optional:
+       * if it fails, the item
+       * must still be created.
+       */
+      let aiTitle =
+        `Untitled item ${
+          index + 1
+        }`;
+
+      let aiDescription:
+        string | null = null;
+
+      try {
+        const ai =
+          await api<AiDescription>(
+            "/api/ai-describe",
+            {
+              method: "POST",
+
+              headers: {
+                "content-type":
+                  "application/json"
+              },
+
+              body:
+                JSON.stringify({
+                  image_url:
+                    uploaded.url
+                })
+            }
+          );
+
+        if (
+          ai.title &&
+          ai.title.trim()
+        ) {
+          aiTitle =
+            ai.title.trim();
+        }
+
+        if (
+          ai.description &&
+          ai.description.trim()
+        ) {
+          aiDescription =
+            ai.description.trim();
+        }
+
+      } catch (aiError) {
+        /*
+         * AI failure should never
+         * stop inventory creation.
+         */
+        console.error(
+          "AI description failed:",
+          aiError
+        );
+      }
+
+      /*
+       * STEP 4
+       * Create the actual
+       * HouseClear item using
+       * AI title and description.
+       */
       await api(
         "/api/items",
         {
@@ -332,12 +420,10 @@ function BatchAddContent() {
                 roomId,
 
               title:
-                `Untitled item ${
-                  index + 1
-                }`,
+                aiTitle,
 
               description:
-                null,
+                aiDescription,
 
               photo_url:
                 uploaded.url
@@ -345,6 +431,10 @@ function BatchAddContent() {
         }
       );
 
+      /*
+       * STEP 5
+       * Mark this photo as done.
+       */
       setPhotos(
         (current) =>
           current.map(
@@ -369,6 +459,7 @@ function BatchAddContent() {
                     ...p,
                     state:
                       "error",
+
                     error:
                       error?.message ||
                       "Upload failed"
@@ -419,6 +510,7 @@ function BatchAddContent() {
   if (!roomId) {
     return (
       <main className="shell stack">
+
         <h1 className="title">
           Batch add
         </h1>
@@ -433,6 +525,7 @@ function BatchAddContent() {
         >
           ← Back to rooms
         </Link>
+
       </main>
     );
   }
@@ -443,6 +536,7 @@ function BatchAddContent() {
       <div className="topbar">
 
         <div>
+
           <Link
             className="subtle"
             href={`/room/${roomId}`}
@@ -456,11 +550,27 @@ function BatchAddContent() {
 
           <div className="subtle">
             One photo becomes
-            one item
+            one AI-described item
           </div>
+
         </div>
 
       </div>
+
+      <section className="card stack">
+
+        <strong>
+          ✨ AI assisted
+        </strong>
+
+        <div className="subtle">
+          Each photo is compressed,
+          uploaded and automatically
+          given a suggested title and
+          description.
+        </div>
+
+      </section>
 
       <label
         className="btn primary"
@@ -481,6 +591,7 @@ function BatchAddContent() {
             )
           }
         />
+
       </label>
 
       {photos.length > 0 && (
@@ -508,6 +619,7 @@ function BatchAddContent() {
               flexWrap: "wrap"
             }}
           >
+
             <span className="badge">
               ✅ {completed}
             </span>
@@ -521,17 +633,21 @@ function BatchAddContent() {
                 ⚠️ {failed}
               </span>
             )}
+
           </div>
 
           <div
             style={{
               height: 8,
+
               background:
                 "rgba(0,0,0,.08)",
+
               borderRadius: 999,
               overflow: "hidden"
             }}
           >
+
             <div
               style={{
                 width:
@@ -554,11 +670,13 @@ function BatchAddContent() {
                   "width .2s"
               }}
             />
+
           </div>
 
           <div className="subtle">
             {completed} /{" "}
             {photos.length} uploaded
+            and analysed
           </div>
 
         </section>
@@ -569,8 +687,10 @@ function BatchAddContent() {
         <section
           style={{
             display: "grid",
+
             gridTemplateColumns:
               "repeat(3, 1fr)",
+
             gap: 8
           }}
         >
@@ -583,6 +703,7 @@ function BatchAddContent() {
                 className="card"
                 style={{
                   padding: 6,
+
                   position:
                     "relative"
                 }}
@@ -595,10 +716,13 @@ function BatchAddContent() {
                   alt=""
                   style={{
                     width: "100%",
+
                     aspectRatio:
                       "1 / 1",
+
                     objectFit:
                       "cover",
+
                     borderRadius: 8
                   }}
                 />
@@ -607,6 +731,7 @@ function BatchAddContent() {
                   style={{
                     position:
                       "absolute",
+
                     left: 10,
                     bottom: 10,
 
@@ -614,18 +739,21 @@ function BatchAddContent() {
                       "rgba(255,255,255,.92)",
 
                     borderRadius: 999,
+
                     padding:
                       "3px 7px",
+
                     fontSize: 12
                   }}
                 >
+
                   {photo.state ===
                     "waiting" &&
                     "⏳"}
 
                   {photo.state ===
                     "uploading" &&
-                    "⬆️"}
+                    "✨"}
 
                   {photo.state ===
                     "done" &&
@@ -634,6 +762,7 @@ function BatchAddContent() {
                   {photo.state ===
                     "error" &&
                     "⚠️"}
+
                 </div>
 
                 {!running &&
@@ -642,18 +771,22 @@ function BatchAddContent() {
 
                   <button
                     type="button"
+
                     onClick={() =>
                       removePhoto(
                         photo.id
                       )
                     }
+
                     style={{
                       position:
                         "absolute",
+
                       right: 10,
                       top: 10,
 
                       border: 0,
+
                       borderRadius:
                         999,
 
@@ -666,6 +799,21 @@ function BatchAddContent() {
                   >
                     ×
                   </button>
+
+                )}
+
+                {photo.state ===
+                  "error" &&
+                  photo.error && (
+
+                  <div
+                    style={{
+                      fontSize: 11,
+                      marginTop: 5
+                    }}
+                  >
+                    {photo.error}
+                  </div>
 
                 )}
 
@@ -683,19 +831,25 @@ function BatchAddContent() {
 
         <button
           className="btn primary"
+
           disabled={
             running ||
             !waiting
           }
+
           onClick={
             startUpload
           }
         >
+
           {running
-            ? `Uploading… ${completed}/${photos.length}`
+            ? `Uploading & analysing… ${completed}/${photos.length}`
+
             : failed
               ? `Retry ${waiting} photos`
-              : `Upload ${photos.length} items`}
+
+              : `Upload & analyse ${photos.length} items`}
+
         </button>
 
       )}
@@ -707,13 +861,14 @@ function BatchAddContent() {
         <section className="card stack">
 
           <strong>
-            ✅ Upload complete
+            ✅ Batch complete
           </strong>
 
           <div className="subtle">
             {completed} new
             HouseClear items were
-            created.
+            uploaded and processed
+            with AI.
           </div>
 
           <Link
