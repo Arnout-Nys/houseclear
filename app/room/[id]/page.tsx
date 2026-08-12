@@ -70,12 +70,28 @@ export default function RoomPage({
 
         </div>
 
-        <Link
-          className="btn primary"
-          href={`/add?room=${id}`}
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            justifyContent: "flex-end"
+          }}
         >
-          + Add
-        </Link>
+          <Link
+            className="btn"
+            href={`/batch-add?room=${id}`}
+          >
+            📸 Batch add
+          </Link>
+
+          <Link
+            className="btn primary"
+            href={`/add?room=${id}`}
+          >
+            + Add
+          </Link>
+        </div>
 
       </div>
 
@@ -88,12 +104,28 @@ export default function RoomPage({
           <br />
           <br />
 
-          <Link
-            className="btn primary"
-            href={`/add?room=${id}`}
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              justifyContent: "center",
+              flexWrap: "wrap"
+            }}
           >
-            📸 Add first item
-          </Link>
+            <Link
+              className="btn"
+              href={`/batch-add?room=${id}`}
+            >
+              📸 Batch add
+            </Link>
+
+            <Link
+              className="btn primary"
+              href={`/add?room=${id}`}
+            >
+              + Add one item
+            </Link>
+          </div>
 
         </div>
 
