@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { MemberPicker, useMember } from "@/components/MemberPicker";
@@ -95,25 +95,6 @@ export default function ItemPage({ params }: { params: Promise<{ id: string }> }
     setEditingDescription(false);
   }
 
-  async function saveAndNext() {
-    if (busy) return;
-    const titleChanged = title.trim() !== (item.title || "").trim();
-    const descriptionChanged = description.trim() !== (item.description || "").trim();
-
-    if (titleChanged || descriptionChanged) {
-      await patch(
-        {
-          title: title.trim() || "Naamloos voorwerp",
-          description: description.trim() || null
-        },
-        false
-      );
-    }
-
-    if (next) router.push(`/item/${next.id}`);
-    else router.push(`/room/${item.room_id}`);
-  }
-
   async function addPhoto(file: File | null) {
     if (!file) return;
     setBusy(true);
@@ -148,14 +129,10 @@ export default function ItemPage({ params }: { params: Promise<{ id: string }> }
   const decisionMakers = members.filter((m) => m.is_decision_maker);
   const decisionMakerVotes = decisionMakers.filter((m) => votes.some((v: any) => v.member_id === m.id));
   const assignedMember = members.find((m) => m.id === item.assigned_member_id);
-
-  const groupedVotes = useMemo(() => {
-    const result: Record<VoteLevel, any[]> = { want: [], maybe: [], no: [] };
-    for (const v of votes) {
-      if (v.level && result[v.level as VoteLevel]) result[v.level as VoteLevel].push(v);
-    }
-    return result;
-  }, [votes]);
+  const groupedVotes: Record<VoteLevel, any[]> = { want: [], maybe: [], no: [] };
+  for (const v of votes) {
+    if (v.level && groupedVotes[v.level as VoteLevel]) groupedVotes[v.level as VoteLevel].push(v);
+  }
 
   const photos = (item.item_photos || [])
     .slice()
@@ -223,6 +200,25 @@ export default function ItemPage({ params }: { params: Promise<{ id: string }> }
       if (!ok) return;
     }
     await patch({ status: item.status === "removed" ? (item.destination ? "decided" : "undecided") : "removed" });
+  }
+
+  async function saveAndNext() {
+    if (busy) return;
+    const titleChanged = title.trim() !== (item.title || "").trim();
+    const descriptionChanged = description.trim() !== (item.description || "").trim();
+
+    if (titleChanged || descriptionChanged) {
+      await patch(
+        {
+          title: title.trim() || "Naamloos voorwerp",
+          description: description.trim() || null
+        },
+        false
+      );
+    }
+
+    if (next) router.push(`/item/${next.id}`);
+    else router.push(`/room/${item.room_id}`);
   }
 
   return (
