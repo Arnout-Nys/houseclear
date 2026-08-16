@@ -20,74 +20,61 @@ const actionLabels: Record<string, string> = {
 };
 
 type AiItem = Item & {
-  ai_category?: string | null;
-  ai_material?: string | null;
-  ai_condition?: string | null;
-  ai_value_min?: number | null;
-  ai_value_max?: number | null;
-  ai_value_currency?: string | null;
-  ai_sale_potential?: string | null;
-  ai_specialist_review?: boolean | null;
-  ai_confidence?: number | null;
-  ai_recommended_action?: string | null;
-  ai_recommendation_reason?: string | null;
-  ai_alternative_action?: string | null;
-  ai_set_hint?: string | null;
-  ai_analysis_updated_at?: string | null;
-  photo_url?: string | null;
-  item_photos?: Array<{ id: string; url: string; sort_order?: number }>;
+  ai_category?: string | null; ai_material?: string | null; ai_condition?: string | null;
+  ai_value_min?: number | null; ai_value_max?: number | null; ai_value_currency?: string | null;
+  ai_sale_potential?: string | null; ai_specialist_review?: boolean | null; ai_confidence?: number | null;
+  ai_recommended_action?: string | null; ai_recommendation_reason?: string | null;
+  ai_alternative_action?: string | null; ai_set_hint?: string | null; ai_analysis_updated_at?: string | null;
+  photo_url?: string | null; item_photos?: Array<{ id: string; url: string; sort_order?: number }>;
+};
+
+type Relationship = {
+  id: string; relationship_type: "duplicate" | "set"; confidence: number; reason?: string | null;
+  item_a: AiItem; item_b: AiItem;
 };
 
 export default function AiReviewPage() {
   const [items, setItems] = useState<AiItem[]>([]);
+  const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [running, setRunning] = useState(false);
+  const [relationRunning, setRelationRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    setItems(await api<AiItem[]>("/api/items"));
+    const [allItems, rels] = await Promise.all([
+      api<AiItem[]>("/api/items"),
+      api<Relationship[]>("/api/ai-relationships").catch(() => [])
+    ]);
+    setItems(allItems); setRelationships(rels);
   }
-
   useEffect(() => { load().catch(() => {}); }, []);
 
-  const missing = useMemo(
-    () => items.filter((item) => !item.ai_analysis_updated_at && (item.photo_url || item.item_photos?.length)),
-    [items]
-  );
-
-  const reviewed = useMemo(
-    () => items.filter((item) => item.ai_analysis_updated_at),
-    [items]
-  );
-
-  const attention = useMemo(
-    () => reviewed.filter((item) => item.ai_specialist_review || item.ai_recommended_action === "expert_review" || item.ai_recommended_action === "auction"),
-    [reviewed]
-  );
+  const missing = useMemo(() => items.filter((item) => !item.ai_analysis_updated_at && (item.photo_url || item.item_photos?.length)), [items]);
+  const reviewed = useMemo(() => items.filter((item) => item.ai_analysis_updated_at), [items]);
+  const attention = useMemo(() => reviewed.filter((item) => item.ai_specialist_review || item.ai_recommended_action === "expert_review" || item.ai_recommended_action === "auction"), [reviewed]);
 
   async function analyseItems(candidates: AiItem[]) {
     if (running || !candidates.length) return;
-    setRunning(true);
-    setError(null);
-    setProgress({ done: 0, total: candidates.length });
-
+    setRunning(true); setError(null); setProgress({ done: 0, total: candidates.length });
     let done = 0;
     for (const item of candidates) {
       try {
-        await api(`/api/items/${item.id}/ai`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ overwrite_text: false })
-        });
-      } catch (e: any) {
-        setError(e?.message || "Een AI-analyse is mislukt.");
-      }
-      done += 1;
-      setProgress({ done, total: candidates.length });
+        await api(`/api/items/${item.id}/ai`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ overwrite_text: false }) });
+      } catch (e: any) { setError(e?.message || "Een AI-analyse is mislukt."); }
+      done += 1; setProgress({ done, total: candidates.length });
     }
+    await load(); setRunning(false);
+  }
 
-    await load();
-    setRunning(false);
+  async function scanRelationships() {
+    if (relationRunning) return;
+    setRelationRunning(true); setError(null);
+    try {
+      await api("/api/ai-relationships", { method: "POST" });
+      await load();
+    } catch (e: any) { setError(e?.message || "Relatiescan mislukt."); }
+    finally { setRelationRunning(false); }
   }
 
   return (
@@ -97,7 +84,7 @@ export default function AiReviewPage() {
           <div>
             <Link className="subtle" href="/">← Overzicht</Link>
             <h1 className="title" style={{ marginTop: 3 }}>✨ AI Review</h1>
-            <div className="subtle">Advies voor items die niemand uit de familie kiest</div>
+            <div className="subtle">Advies als niemand uit de familie het item kiest</div>
           </div>
           <GlobalMenu />
         </div>
@@ -105,22 +92,23 @@ export default function AiReviewPage() {
 
       <section className="card stack">
         <strong>AI Decision Support</strong>
-        <div className="subtle">
-          AI geeft een brede waarde-indicatie en adviseert een verkoop- of afvoerroute. Dit is geen taxatie en verandert nooit automatisch de familiebeslissing.
-        </div>
+        <div className="subtle">AI geeft een brede waarde-indicatie en adviseert een verkoop- of afvoerroute. Dit is geen taxatie en verandert nooit automatisch een familiebeslissing.</div>
         <div className="badges">
           <span className="badge">✨ {reviewed.length} geanalyseerd</span>
           <span className="badge">⏳ {missing.length} nog te analyseren</span>
           <span className="badge conflict">🔎 {attention.length} extra aandacht</span>
         </div>
-
-        {missing.length ? (
-          <button className="btn primary" disabled={running} onClick={() => analyseItems(missing)}>
-            {running ? `Analyseren… ${progress.done}/${progress.total}` : `Analyseer ${missing.length} bestaande items`}
-          </button>
-        ) : null}
+        {missing.length ? <button className="btn primary" disabled={running} onClick={() => analyseItems(missing)}>{running ? `Analyseren… ${progress.done}/${progress.total}` : `Analyseer ${missing.length} bestaande items`}</button> : null}
+        <button className="btn" disabled={relationRunning || items.length < 2} onClick={scanRelationships}>{relationRunning ? "Foto’s vergelijken…" : "🔗 Zoek mogelijke sets & dubbels"}</button>
         {error ? <div className="badge conflict">⚠️ {error}</div> : null}
       </section>
+
+      {relationships.length ? (
+        <section className="stack">
+          <h2 className="section-title">Mogelijke sets & dubbels</h2>
+          {relationships.map((rel) => <RelationshipCard key={rel.id} rel={rel} />)}
+        </section>
+      ) : null}
 
       {attention.length ? (
         <section className="stack">
@@ -131,23 +119,36 @@ export default function AiReviewPage() {
 
       <section className="stack">
         <h2 className="section-title">Alle AI-adviezen</h2>
-        {reviewed.length ? reviewed.map((item) => <AiCard key={item.id} item={item} />) : (
-          <div className="card empty">Nog geen uitgebreide AI-analyses.</div>
-        )}
+        {reviewed.length ? reviewed.map((item) => <AiCard key={item.id} item={item} />) : <div className="card empty">Nog geen uitgebreide AI-analyses.</div>}
       </section>
-
       <Nav />
     </main>
   );
 }
 
+function RelationshipCard({ rel }: { rel: Relationship }) {
+  const photo = (item: AiItem) => item.item_photos?.[0]?.url || item.photo_url;
+  return (
+    <article className="card stack">
+      <strong>{rel.relationship_type === "duplicate" ? "🪞 Mogelijk hetzelfde voorwerp" : "🔗 Mogelijke set"} · {Math.round(Number(rel.confidence) * 100)}%</strong>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {[rel.item_a, rel.item_b].map((item) => (
+          <Link key={item.id} href={`/item/${item.id}`}>
+            {photo(item) ? <img src={photo(item)!} alt={item.title} style={{ width: "100%", aspectRatio: "1/1", objectFit: "contain", background: "#eef0ed", borderRadius: 12 }} /> : null}
+            <div style={{ marginTop: 6, fontWeight: 700 }}>{item.title}</div>
+          </Link>
+        ))}
+      </div>
+      {rel.reason ? <div className="subtle">{rel.reason}</div> : null}
+      <div className="subtle">Alleen suggestie — items worden niet automatisch samengevoegd.</div>
+    </article>
+  );
+}
+
 function AiCard({ item }: { item: AiItem }) {
   const photo = item.item_photos?.[0]?.url || item.photo_url;
-  const value = item.ai_value_min != null || item.ai_value_max != null
-    ? `€${item.ai_value_min ?? "?"}–€${item.ai_value_max ?? "?"}`
-    : "Waarde onzeker";
+  const value = item.ai_value_min != null || item.ai_value_max != null ? `€${item.ai_value_min ?? "?"}–€${item.ai_value_max ?? "?"}` : "Waarde onzeker";
   const confidence = item.ai_confidence != null ? Math.round(Number(item.ai_confidence) * 100) : null;
-
   return (
     <article className="card stack">
       <Link href={`/item/${item.id}`} style={{ display: "grid", gridTemplateColumns: "92px 1fr", gap: 12, alignItems: "center" }}>
@@ -162,12 +163,10 @@ function AiCard({ item }: { item: AiItem }) {
           </div>
         </div>
       </Link>
-
       <div className={item.ai_specialist_review ? "decision-banner warning" : "decision-banner"}>
         <strong>{actionLabels[item.ai_recommended_action || ""] || "✨ Menselijke beoordeling"}</strong>
         <span>{item.ai_recommendation_reason || "Geen motivering beschikbaar."}</span>
       </div>
-
       {item.ai_set_hint ? <div className="subtle"><strong>🔗 Mogelijke set:</strong> {item.ai_set_hint}</div> : null}
       {item.ai_alternative_action ? <div className="subtle"><strong>Alternatief:</strong> {item.ai_alternative_action}</div> : null}
       <div className="subtle">Aanbeveling geldt alleen als geen familielid het item kiest.</div>
