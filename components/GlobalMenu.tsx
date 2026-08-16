@@ -16,12 +16,7 @@ export function GlobalMenu({ roomId }: { roomId?: string }) {
 
   return (
     <>
-      <button
-        type="button"
-        className="menu-trigger"
-        onClick={() => setOpen(true)}
-        aria-label="Menu openen"
-      >
+      <button type="button" className="menu-trigger" onClick={() => setOpen(true)} aria-label="Menu openen">
         <span className="menu-avatar">{initials(active?.name || "?")}</span>
         <span className="menu-bars">☰</span>
       </button>
@@ -30,10 +25,7 @@ export function GlobalMenu({ roomId }: { roomId?: string }) {
         <div className="menu-backdrop" role="presentation" onClick={() => setOpen(false)}>
           <aside className="global-menu" role="dialog" aria-modal="true" aria-label="HouseClear menu" onClick={(event) => event.stopPropagation()}>
             <div className="global-menu-head">
-              <div>
-                <strong>HouseClear</strong>
-                <div className="subtle">Je bent {active?.name || "…"}</div>
-              </div>
+              <div><strong>HouseClear</strong><div className="subtle">Je bent {active?.name || "…"}</div></div>
               <button className="menu-close" onClick={() => setOpen(false)} aria-label="Menu sluiten">×</button>
             </div>
 
@@ -41,14 +33,7 @@ export function GlobalMenu({ roomId }: { roomId?: string }) {
               <strong>Wie ben je?</strong>
               <div className="menu-members">
                 {members.map((member) => (
-                  <button
-                    key={member.id}
-                    className={`menu-member ${selected === member.id ? "active" : ""}`}
-                    onClick={() => {
-                      setSelected(member.id);
-                      setOpen(false);
-                    }}
-                  >
+                  <button key={member.id} className={`menu-member ${selected === member.id ? "active" : ""}`} onClick={() => { setSelected(member.id); setOpen(false); }}>
                     <span className="menu-member-avatar">{initials(member.name)}</span>
                     <span>{member.name}</span>
                     {member.is_decision_maker ? <small>beslisser</small> : null}
@@ -60,6 +45,7 @@ export function GlobalMenu({ roomId }: { roomId?: string }) {
             <nav className="menu-links" aria-label="Secundaire navigatie">
               <Link href="/items?filter=my_work" onClick={() => setOpen(false)}>👤 Mijn open items <span>›</span></Link>
               <Link href="/decide" onClick={() => setOpen(false)}>⚠️ Beslissingen nodig <span>›</span></Link>
+              <Link href="/ai-review" onClick={() => setOpen(false)}>✨ AI Review <span>›</span></Link>
               {roomId ? <Link href={`/batch-add?room=${roomId}`} onClick={() => setOpen(false)}>📸 Batch foto’s toevoegen <span>›</span></Link> : null}
               <Link href="/items?filter=sell" onClick={() => setOpen(false)}>💰 Te verkopen <span>›</span></Link>
               <Link href="/items?filter=clearance" onClick={() => setOpen(false)}>🚚 Voor opruimer <span>›</span></Link>
@@ -87,16 +73,7 @@ export function IdentityButton() {
       {open ? (
         <div className="identity-popover">
           {members.map((member) => (
-            <button
-              key={member.id}
-              className={selected === member.id ? "active" : ""}
-              onClick={() => {
-                setSelected(member.id);
-                setOpen(false);
-              }}
-            >
-              {member.name}
-            </button>
+            <button key={member.id} className={selected === member.id ? "active" : ""} onClick={() => { setSelected(member.id); setOpen(false); }}>{member.name}</button>
           ))}
         </div>
       ) : null}
