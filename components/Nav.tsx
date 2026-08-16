@@ -4,29 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const items = [
-  { href: "/", icon: "🏠", label: "Home" },
-  { href: "/add", icon: "📸", label: "Add" },
-  { href: "/decide", icon: "⚠️", label: "Decide" },
-  { href: "/items?filter=my_work", icon: "👤", label: "Me" }
+  { href: "/", icon: "🏠", label: "Overzicht" },
+  { href: "/add", icon: "📸", label: "Toevoegen" },
+  { href: "/decide", icon: "⚠️", label: "Beslissen" }
 ];
 
 export function Nav() {
   const pathname = usePathname();
 
   return (
-    <nav className="nav" aria-label="Main navigation">
+    <nav className="nav" aria-label="Hoofdnavigatie">
       {items.map((item) => {
-        const active =
-          item.href === "/"
-            ? pathname === "/"
-            : pathname.startsWith(item.href.split("?")[0]);
-
+        const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={active ? "active" : ""}
-          >
+          <Link key={item.href} href={item.href} className={active ? "active" : ""}>
             <span className="nav-icon" aria-hidden="true">{item.icon}</span>
             <span>{item.label}</span>
           </Link>
