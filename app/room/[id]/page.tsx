@@ -26,6 +26,7 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
   const [viewMode, setViewMode] = useState<ViewMode>("photo");
   const [filter, setFilter] = useState<RoomFilter>("all");
   const [filterOpen, setFilterOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const { members, selected } = useMember();
   const scrollKey = `houseclear:room:${id}:scroll`;
 
@@ -136,7 +137,10 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         <div className="card empty">
           Nog niets gefotografeerd in deze kamer.
           <br /><br />
-          <Link className="btn primary" href={`/add?room=${id}`}>＋ Eerste item toevoegen</Link>
+          <div style={{ display: "grid", gap: 8 }}>
+            <Link className="btn primary" href={`/add?room=${id}`}>＋ Eén item toevoegen</Link>
+            <Link className="btn" href={`/batch-add?room=${id}`}>📸 Meerdere foto’s met AI</Link>
+          </div>
         </div>
       ) : visibleItems.length === 0 ? (
         <div className="card empty">
@@ -160,7 +164,43 @@ export default function RoomPage({ params }: { params: Promise<{ id: string }> }
         </section>
       )}
 
-      <Link className="floating-add" href={`/add?room=${id}`} aria-label="Item toevoegen">＋</Link>
+      {addOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            right: 16,
+            bottom: "calc(var(--nav-h) + 92px + env(safe-area-inset-bottom))",
+            zIndex: 36,
+            width: 250,
+            display: "grid",
+            gap: 8,
+            padding: 10,
+            borderRadius: 18,
+            background: "rgba(255,255,255,.98)",
+            border: "1px solid var(--line)",
+            boxShadow: "0 12px 32px rgba(0,0,0,.18)",
+            backdropFilter: "blur(14px)"
+          }}
+        >
+          <div style={{ padding: "4px 4px 2px" }}>
+            <strong>Toevoegen</strong>
+            <div className="subtle" style={{ marginTop: 2 }}>Kies hoe je items wilt registreren.</div>
+          </div>
+          <Link className="btn primary" href={`/add?room=${id}`} onClick={() => setAddOpen(false)}>＋ Eén item</Link>
+          <Link className="btn" href={`/batch-add?room=${id}`} onClick={() => setAddOpen(false)}>📸 Meerdere foto’s met AI</Link>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        className="floating-add"
+        aria-label="Items toevoegen"
+        aria-expanded={addOpen}
+        onClick={() => setAddOpen((value) => !value)}
+      >
+        {addOpen ? "×" : "＋"}
+      </button>
+
       <Nav />
     </main>
   );
